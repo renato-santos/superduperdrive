@@ -4,6 +4,11 @@ import com.udacity.jwdnd.course1.cloudstorage.model.File;
 import com.udacity.jwdnd.course1.cloudstorage.model.User;
 import com.udacity.jwdnd.course1.cloudstorage.services.FileService;
 import com.udacity.jwdnd.course1.cloudstorage.services.UserService;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -20,6 +25,9 @@ import static java.util.Objects.isNull;
 public class FileController {
     private FileService fileService;
     private UserService userService;
+
+
+    private static final Long FILE_MAX_SIZE = 10485760l;
 
     public FileController(FileService fileService, UserService userService) {
         this.fileService = fileService;
@@ -38,6 +46,18 @@ public class FileController {
         String errorMessage = null;
         if(!fileService.isFilenameAlreadyExists(user.getUserId(), fileUploaded.getOriginalFilename())){
             errorMessage = "The Filename already exists.";
+            model.addAttribute("errorFlag",true);
+            model.addAttribute("errorMessage", errorMessage);
+        }
+
+        if(fileUploaded.getOriginalFilename().isEmpty()){
+            errorMessage = "Please upload a file.";
+            model.addAttribute("errorFlag",true);
+            model.addAttribute("errorMessage", errorMessage);
+        }
+
+        if(fileUploaded.getSize() > FILE_MAX_SIZE){
+            errorMessage = "File size exceeded maximum size. Please select another file. ";
             model.addAttribute("errorFlag",true);
             model.addAttribute("errorMessage", errorMessage);
         }
@@ -82,20 +102,14 @@ public class FileController {
         return "result";
     }
 
-    @GetMapping("/view/{fileId}")
-    public void viewFile(@PathVariable Integer fileId, Authentication auth, HttpServletResponse response, Model model) throws IOException {
+    @GetMapping(value = "/view/{fileId}", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    public ResponseEntity<Resource> viewFile(@PathVariable Integer fileId, Authentication auth, HttpServletResponse response, Model model) throws IOException {
 
         User user = userService.getUser(auth.getName());
         File file = fileService.getFile(fileId, user.getUserId());
-
-        response.setContentType(file.getContenttype());
-
-        try {
-            response.getOutputStream().write(file.getFiledata(), 0, file.getFiledata().length);
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            response.getOutputStream().close();
-        }
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(file.getContenttype()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + file.getFilename() + "\"")
+                .body(new ByteArrayResource(file.getFiledata()));
     }
 }
